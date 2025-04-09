@@ -10,22 +10,26 @@
 
 --De plus, le paquetage doit contenir les fonctions et les procédures stockées dédiées à la gestion des réservations
 -- et qui sont décrites dans la section suivante.
+drop package pkg_gestion_reservation;
+
+SELECT *
+FROM USER_types;
 
 create or replace package pkg_gestion_reservation As
     TYPE r_reservation_type is record(
-        id RESERVATIONS.ID_RESERVATION%type,
-        date_reservation RESERVATIONS.DATE_RESERVATION%type,
-        nom_activite ACTIVITIES.NOM_ACTIVITE%type,
-        capacite_max ACTIVITIES.CAPACITE_MAX%type,
-        nombre_inscrits number
-         );
+                                         id RESERVATIONS.ID_RESERVATION%type,
+                                         date_reservation RESERVATIONS.DATE_RESERVATION%type,
+                                         nom_activite ACTIVITIES.NOM_ACTIVITE%type,
+                                         capacite_max ACTIVITIES.CAPACITE_MAX%type,
+                                         nombre_inscrits number
+                                     );
     TYPE t_reservation is table of r_reservation_type;
 
     TYPE r_membre_type is record(
-        nom MEMBRES.NOM_MEMBRE%type,
-        prenom MEMBRES.PRENOM_MEMBRE%type,
-        date_reservation date
-        );
+                                    nom MEMBRES.NOM_MEMBRE%type,
+                                    prenom MEMBRES.PRENOM_MEMBRE%type,
+                                    date_reservation date
+                                );
     type t_membre is table of r_membre_type;
 
     FUNCTION activite_est_disponible(p_id_activite number) RETURN boolean;
