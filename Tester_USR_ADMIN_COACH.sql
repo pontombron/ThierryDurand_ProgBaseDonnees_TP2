@@ -1,8 +1,3 @@
---NOTE IMPORTANTE:
--- le générateur de id ne fonctionne pas avec le USR_COACH. Je mets donc pour celui-ci
--- un id à la main quand je dois ajouter un membre. Pour USR_ADMIN, j'ai utilisé le générateur de id.
-
-
 --4 Avec l’utilisateur USR_ADMIN :
 -- Affichez la liste des activités.
 select * from ACTIVITIES;
