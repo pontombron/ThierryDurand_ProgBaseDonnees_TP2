@@ -50,23 +50,41 @@ create or replace package body pkg_gestion_reservation as
         v_est_disponible boolean := false;
         v_capacite_maximale ACTIVITIES.CAPACITE_MAX%type := 0;
         v_nb_reservation_actuelle number := 0;
-    begin
-        Select CAPACITE_MAX
-        Into v_capacite_maximale
-        from ACTIVITIES
-        where ID_ACTIVITE = p_id_activite;
+    BEGIN
+        BEGIN
+            SELECT CAPACITE_MAX
+            INTO v_capacite_maximale
+            FROM ACTIVITIES
+            WHERE ID_ACTIVITE = p_id_activite;
 
-        select count(ID_ACTIVITE)
-        into v_nb_reservation_actuelle
-        from RESERVATIONS
-        where ID_ACTIVITE = p_id_activite;
+        EXCEPTION
+            WHEN NO_DATA_FOUND THEN
+                RAISE_APPLICATION_ERROR(-20002, 'Id activité ' || p_id_activite || ' introuvable');
+            WHEN OTHERS THEN
+                DBMS_OUTPUT.PUT_LINE('Erreur SQL : ' || SQLCODE || ' - ' || SQLERRM);
+                RAISE;
+        END;
 
-        if v_capacite_maximale > v_nb_reservation_actuelle then
-            v_est_disponible := true;
-        end if;
+        BEGIN
+            SELECT COUNT(ID_ACTIVITE)
+            INTO v_nb_reservation_actuelle
+            FROM RESERVATIONS
+            WHERE ID_ACTIVITE = p_id_activite;
 
-        return v_est_disponible;
-    end activite_est_disponible;
+        EXCEPTION
+            WHEN NO_DATA_FOUND THEN
+                v_nb_reservation_actuelle := 0;
+            WHEN OTHERS THEN
+                DBMS_OUTPUT.PUT_LINE('Erreur SQL : ' || SQLCODE || ' - ' || SQLERRM);
+                RAISE;
+        END;
+
+        IF v_capacite_maximale > v_nb_reservation_actuelle THEN
+            v_est_disponible := TRUE;
+        END IF;
+
+        RETURN v_est_disponible;
+    END activite_est_disponible;
 
 --ajouter_reservation : Pour un membre et une activité donnée, cette procédure permet d’ajouter une nouvelle réservation
 -- après avoir vérifié si l’activité est disponible. Pensez à utiliser la fonction précédente. Affichez dans la console
@@ -79,11 +97,18 @@ create or replace package body pkg_gestion_reservation as
 
         if v_est_disponible then
             Insert Into RESERVATIONS(ID_RESERVATION, DATE_RESERVATION,ID_MEMBRE,ID_ACTIVITE)
-            values (SEQ_GENERATEUR_ID.nextval, SYSDATE,p_id_membre,p_id_activite);
+            values (SEQ_GENERATEUR_ID.nextval, SYSDATE,
+                    p_id_membre,p_id_activite);
             DBMS_OUTPUT.PUT_LINE('reservation effecutée avec succès');
+            commit;
         ELSE
             DBMS_OUTPUT.PUT_LINE('Il ne reste plus de place pour cette activité');
         end if;
+
+    EXCEPTION
+        WHEN OTHERS THEN
+            DBMS_OUTPUT.PUT_LINE('Erreur SQL : ' || SQLCODE || ' - ' || SQLERRM);
+            RAISE;
     end;
 
 
@@ -104,9 +129,15 @@ create or replace package body pkg_gestion_reservation as
               and id_activite = p_id_activite_actuelle;
 
             DBMS_OUTPUT.PUT_LINE('La modification a été effectuée avec succès');
+            commit;
         ELSE
             DBMS_OUTPUT.PUT_LINE('Il ne reste plus de place pour cette activité.');
         end if;
+
+    EXCEPTION
+        WHEN OTHERS THEN
+            DBMS_OUTPUT.PUT_LINE('Erreur SQL : ' || SQLCODE || ' - ' || SQLERRM);
+            RAISE;
     end;
 
 --annuler_resevation : Supprimer une réservation dont l’identifiant est passé en paramètre. Cette procédure ne retourne
@@ -117,6 +148,11 @@ create or replace package body pkg_gestion_reservation as
         where ID_RESERVATION = p_id_reservation;
 
         DBMS_OUTPUT.PUT_LINE('L''activité a bien été supprimée');
+
+    EXCEPTION
+        WHEN OTHERS THEN
+            DBMS_OUTPUT.PUT_LINE('Erreur SQL : ' || SQLCODE || ' - ' || SQLERRM);
+            RAISE;
     end;
 
 --get_reservations_membre : Pour un id_membre passé en paramètre, cette fonction récupère la liste de toutes les
@@ -124,19 +160,37 @@ create or replace package body pkg_gestion_reservation as
     FUNCTION get_reservation_membre(p_id_membre number) RETURN t_reservation is
         v_reservations t_reservation;
     BEGIN
-        SELECT r.id_reservation, r.date_reservation, a.nom_activite, a.capacite_max, 0 as nombre_inscrits
-                BULK COLLECT INTO v_reservations FROM RESERVATIONS r
-                                                          JOIN ACTIVITIES a
-                                                               ON r.id_activite = a.id_activite
-        WHERE r.id_membre = p_id_membre;
+        Begin
+            SELECT r.id_reservation, r.date_reservation, a.nom_activite, a.capacite_max, 0 as nombre_inscrits
+                    BULK COLLECT INTO v_reservations FROM RESERVATIONS r
+                                                              JOIN ACTIVITIES a
+                                                                   ON r.id_activite = a.id_activite
+            WHERE r.id_membre = p_id_membre;
+
+        EXCEPTION
+            WHEN NO_DATA_FOUND THEN
+                DBMS_OUTPUT.PUT_LINE('Aucune réservation trouvée pour ce membre : ' || p_id_membre);
+                RETURN v_reservations;
+            WHEN OTHERS THEN
+                DBMS_OUTPUT.PUT_LINE('Erreur lors de la récupération des réservations : '
+                    || SQLCODE || ' - ' || SQLERRM);
+                RAISE;
+        end;
 
         FOR i IN 1..v_reservations.COUNT LOOP
-                SELECT COUNT(*)
-                INTO v_reservations(i).nombre_inscrits
-                FROM RESERVATIONS
-                WHERE ID_ACTIVITE = v_reservations(i).id;
-            END LOOP;
+                begin
+                    SELECT COUNT(*)
+                    INTO v_reservations(i).nombre_inscrits
+                    FROM RESERVATIONS
+                    WHERE ID_ACTIVITE = v_reservations(i).id;
 
+                EXCEPTION
+                    WHEN OTHERS THEN
+                        DBMS_OUTPUT.PUT_LINE('Erreur lors du comptage du nombre de personnes inscrites pour la réservation '
+                            || v_reservations(i).id || ' : ' || SQLCODE || ' - ' || SQLERRM);
+                        v_reservations(i).nombre_inscrits := 0;
+                end;
+            END LOOP;
         RETURN v_reservations;
     END get_reservation_membre;
 
@@ -152,25 +206,45 @@ create or replace package body pkg_gestion_reservation as
             DBMS_OUTPUT.PUT_LINE('Le membre n''a pas de réservation');
         else
             for i in 1..v_reservations.COUNT loop
-                    dbms_output.PUT_LINE('Id réservation: ' || v_reservations(i).id ||
-                                         'Date de réservation: ' || v_reservations(i).date_reservation ||
-                                         'Nom de l''activite: ' || v_reservations(i).nom_activite ||
-                                         'Capacité de l''activité ' || v_reservations(i).capacite_max ||
-                                         'Nombre d''inscrits: ' || v_reservations(i).nombre_inscrits);
+                    begin
+                        dbms_output.PUT_LINE('Id réservation: ' || v_reservations(i).id ||
+                                             'Date de réservation: ' || v_reservations(i).date_reservation ||
+                                             'Nom de l''activite: ' || v_reservations(i).nom_activite ||
+                                             'Capacité de l''activité ' || v_reservations(i).capacite_max ||
+                                             'Nombre d''inscrits: ' || v_reservations(i).nombre_inscrits);
+                    EXCEPTION
+                        WHEN OTHERS THEN
+                            DBMS_OUTPUT.PUT_LINE('Erreur lors de l''affichage de la réservation ' || v_reservations(i).id ||
+                                                 ' : ' || SQLCODE || ' - ' || SQLERRM);
+                    end;
                 end loop;
         end if;
+
+    EXCEPTION
+        WHEN OTHERS THEN
+            DBMS_OUTPUT.PUT_LINE('Erreur lors de l''exécution de la procédure : ' || SQLCODE || ' - ' || SQLERRM);
+            RAISE;
     end;
 
 --get_membres_activites : Retourne la liste des membres inscrits à une activité donnée en paramètre.
     FUNCTION get_membres_activite(p_id_activite number) RETURN t_membre is
         v_membres t_membre;
     begin
-        SELECT m.nom_membre, m.prenom_membre, r.date_reservation
-                BULK COLLECT INTO v_membres
-        FROM MEMBRES m
-                 JOIN RESERVATIONS r ON m.id_membre = r.id_membre
-        WHERE r.id_activite = p_id_activite;
+        begin
+            SELECT m.nom_membre, m.prenom_membre, r.date_reservation
+                    BULK COLLECT INTO v_membres
+            FROM MEMBRES m
+                     JOIN RESERVATIONS r ON m.id_membre = r.id_membre
+            WHERE r.id_activite = p_id_activite;
 
-        RETURN v_membres;
+        EXCEPTION
+            WHEN NO_DATA_FOUND THEN
+                DBMS_OUTPUT.PUT_LINE('Aucun membre trouvé pour l''activité ID ' || p_id_activite);
+                RETURN v_membres;
+            WHEN OTHERS THEN
+                DBMS_OUTPUT.PUT_LINE('Erreur lors de la récupération des membres pour l''activité ' || p_id_activite || ' : ' || SQLCODE || ' - ' || SQLERRM);
+                RETURN v_membres;
+        end;
+        return v_membres;
     end get_membres_activite;
 end;

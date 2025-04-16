@@ -3,8 +3,8 @@ DECLARE
 v_reservations PKG_GESTION_RESERVATION.t_reservation;
     v_membres PKG_GESTION_RESERVATION.t_membre;
 BEGIN
-    PKG_GESTION_RESERVATION.ajouter_reservation(TO_DATE('2025-12-31', 'YYYY-MM-DD'), 11, 26);
-    PKG_GESTION_RESERVATION.modifier_reservation(TO_DATE('2025-12-31', 'YYYY-MM-DD'), 11, 26, 25);
+    PKG_GESTION_RESERVATION.ajouter_reservation(11, 26);
+    PKG_GESTION_RESERVATION.modifier_reservation(TO_DATE('2025-12-31', 'YYYY-MM-DD'), 11, 26, 27);
 
     v_reservations := PKG_GESTION_RESERVATION.get_reservation_membre(26);
 
